@@ -11,11 +11,12 @@ tissue=$1
 min=$2
 peakMethod=$3
 signalMethod=$4
+mode=$5
 
 
 if [ $signalMethod == "DNase" ]
 then
-    width=150
+    width=250
 else
     width=1000
 fi
@@ -37,12 +38,22 @@ B=$(grep $tissue $signalMethod"-List.txt" | awk -F "\t" '{print $2}')
 ~/bin/bigWigAverageOverBed /data/projects/encode/data/$A/$B.bigWig bed \
     out.tab -bedOut=out.bed
 
-awk '{print $1 "\t" $2+'$width'-150 "\t" $3-'$width'+150 "\t" $4 "\t" $5}' \
-    out.bed | sort -k5,5rg | head -n $min > bed
+awk '{if ($2 > 0) print $1 "\t" $2+'$width'-150 "\t" $3-'$width'+150 "\t" $4 "\t" $5;\
+    else printf "%s\t%.0f\t%.0f\t%s\t%s\n", $1,($3+$2)/2-150,($3+$2)/2+150,$4,$5}' out.bed \
+    | awk '{if ($2 < 0) print $1 "\t" 0 "\t" $3 "\t" $4 "\t" $5; else print $0}' \
+    | sort -k5,5rg | head -n $min > bed
 bedtools intersect -wo -a $tissue.bed -b bed > p
 
-python pick.best.peak.py p 9 | awk '{print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $9}' \
-    >  $tissue-$peakMethod-$signalMethod-Results.txt
+if [ $mode == "inverse" ]
+then
+    python pick.worst.peak.py p 9 | awk '{print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $9}' \
+        >  $tissue-$peakMethod-$signalMethod-Results.txt    
+
+else
+    python pick.best.peak.py p 9 | awk '{print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $9}' \
+        >  $tissue-$peakMethod-$signalMethod-Results.txt
+fi
+
 bedtools intersect -v -a $tissue.bed -b bed | awk '{print $1 "\t" $2 "\t" $3 \
     "\t" $4 "\t" 0 }' >> $tissue-$peakMethod-$signalMethod-Results.txt
 
